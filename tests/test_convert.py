@@ -10,18 +10,16 @@ from tvision import nucls_data as nd
 from tvision.config import Classes, Convert
 from tvision.explore import EDGE_TOLERANCE_PX
 
+from conftest import H, W, _box, _raw
+
 CLASSES = Classes.load()
 CFG = Convert(min_visibility=0.1, min_size_px=2)
-W, H = 100, 80
 RECT = (10, 10, 90, 70)
 
 def _ann(*boxes: dict) -> pd.DataFrame:
     base = {"type": "rectangle", "super_classification": "tumor_any"}
     df = pd.DataFrame([{**base, **b} for b in boxes]).rename_axis("ann_id").reset_index()
     return nd.map_classes(df, CLASSES)
-
-def _box(x0, y0, x1, y1, **kw) -> dict:
-    return {"xmin": x0, "ymin": y0, "xmax": x1, "ymax": y1, **kw}
 
 def _convert(*boxes: dict, rect=RECT) -> pd.DataFrame:
     return cv.convert_boxes(_ann(*boxes), rect, W, H, CLASSES, CFG)
@@ -137,31 +135,6 @@ def test_mask_codes_after_png_round_trip(tmp_path):
     rgb[2:8, 3:11, 0] = nd.FOV_CODE  # red in RGB order, as NuCLS stores it
     cv2.imwrite(str(tmp_path / "m.png"), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
     assert nd.fov_rect(nd.mask_codes(cv2.imread(str(tmp_path / "m.png"), cv2.IMREAD_COLOR))) == (3, 2, 11, 8)
-
-STEMS = {"TCGA-AA-0001-DX1_id-a": "train", "TCGA-BB-0002-DX1_id-b": "val", "TCGA-CC-0003-DX1_id-c": "test"}
-
-def _raw(root: Path) -> tuple[Path, Path]:
-    raw, out = root / "raw", root / "out"
-    for d in ("rgb", "mask", "csv"):
-        (raw / d).mkdir(parents=True)
-    out.mkdir()
-    rng = np.random.default_rng(0)
-    for i, stem in enumerate(STEMS):
-        cv2.imwrite(str(raw / "rgb" / f"{stem}.png"), rng.integers(0, 255, (H, W, 3), np.uint8))
-        mask = np.zeros((H, W, 3), np.uint8)
-        mask[10:70, 10:90, 2] = nd.FOV_CODE
-        cv2.imwrite(str(raw / "mask" / f"{stem}.png"), mask)
-        rows = [{"raw_classification": "tumor", "main_classification": "tumor_nonMitotic",
-                 "super_classification": "tumor_any", "type": "rectangle", **_box(20, 20, 40, 40 + i)},
-                {"raw_classification": "tumor", "main_classification": "tumor_nonMitotic",
-                 "super_classification": "tumor_any", "type": "polyline", **_box(20, 20, 40, 40 + i)},
-                {"raw_classification": "lymphocyte", "main_classification": "lymphocyte",
-                 "super_classification": "sTIL", "type": "point", **_box(5, 5, 5, 5)},
-                {"raw_classification": "lymphocyte", "main_classification": "lymphocyte",
-                 "super_classification": "sTIL", "type": "polyline", **_box(0, 0, 8, 8)}]
-        pd.DataFrame(rows).to_csv(raw / "csv" / f"{stem}.csv")
-    pd.DataFrame({"stem": list(STEMS), "split": list(STEMS.values())}).to_csv(out / "splits.csv", index=False)
-    return raw, out
 
 def _snapshot(out: Path) -> dict[str, bytes]:
     return {str(p.relative_to(out)): p.read_bytes() for p in sorted(out.rglob("*")) if p.is_file()}
