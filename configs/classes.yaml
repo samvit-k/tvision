@@ -1,0 +1,12 @@
+names: [tumor, non_tumor, ambiguous]
+
+headline: [tumor, non_tumor]
+
+super_to_class:
+  tumor_any: tumor            
+  sTIL: non_tumor            
+  nonTIL_stromal: non_tumor  
+  other_nucleus: non_tumor   
+  AMBIGUOUS: ambiguous       
+
+drop_types: [point]

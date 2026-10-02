@@ -1,0 +1,16 @@
+# Raw source data (immutable, referenced via configs/paths.yaml)
+QC/
+# Generated data and outputs
+data/
+artifacts/
+runs/
+*.pt
+# Environments / caches / tooling
+.venv/
+__pycache__/
+.pytest_cache/
+node_modules/
+.nuxt/
+.output/
+.claude/
+.DS_Store
