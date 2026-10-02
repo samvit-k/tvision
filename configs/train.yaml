@@ -1,0 +1,34 @@
+model: yolo26n.pt
+imgsz: 640
+epochs: 100
+patience: 30
+batch: 16
+device: mps
+seed: 0
+deterministic: true
+cache: false
+max_det: 1000
+name: baseline
+
+augmentation:
+  fliplr: 0.5
+  flipud: 0.5
+  hsv_h: 0.0
+  hsv_s: 0.0
+  hsv_v: 0.0
+  degrees: 0.0
+  translate: 0.0
+  scale: 0.0
+  shear: 0.0
+  perspective: 0.0
+  mosaic: 0.0
+  close_mosaic: 0
+  mixup: 0.0
+  cutmix: 0.0
+  copy_paste: 0.0
+  bgr: 0.0
+
+smoke:
+  epochs: 2
+  fraction: 0.1
+  name: baseline-smoke

@@ -1,3 +1,4 @@
 raw_dir: QC
 processed_dir: data/processed/nucls_yolo
 artifacts_dir: artifacts
+runs_dir: runs

@@ -13,4 +13,5 @@ node_modules/
 .nuxt/
 .output/
 .claude/
+.ultralytics/
 .DS_Store

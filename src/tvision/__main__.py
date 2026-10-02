@@ -12,6 +12,10 @@ def main() -> int:
     p = sub.add_parser("verify", help="Verify the YOLO conversion independently from the raw data")
     p.add_argument("--overlays", type=int, default=12)
     p.add_argument("--seed", type=int, default=0)
+    p = sub.add_parser("train", help="Fine-tune the pretrained detector (configs/train.yaml)")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--smoke", action="store_true", help="Apply the smoke overrides from configs/train.yaml")
+    mode.add_argument("--check", action="store_true", help="Run only the verify gate and Ultralytics loader check")
     args = parser.parse_args()
 
     if args.command == "explore":
@@ -26,6 +30,9 @@ def main() -> int:
     if args.command == "verify":
         from tvision.verify import verify
         return 0 if verify(args.overlays, args.seed) else 1
+    if args.command == "train":
+        from tvision.train import train
+        return 0 if train(args.smoke, args.check) else 1
     return 2
 
 if __name__ == "__main__":

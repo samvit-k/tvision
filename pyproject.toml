@@ -9,6 +9,7 @@ dependencies = [
     "pandas",
     "pyyaml",
     "opencv-python",
+    "ultralytics==8.4.171",
 ]
 
 [dependency-groups]

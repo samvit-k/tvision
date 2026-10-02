@@ -21,11 +21,12 @@ class Paths:
     raw_dir: Path
     processed_dir: Path
     artifacts_dir: Path
+    runs_dir: Path
 
     @classmethod
     def load(cls) -> "Paths":
         cfg = load_yaml("paths.yaml")
-        return cls(**{k: _resolve(cfg[k]) for k in ("raw_dir", "processed_dir", "artifacts_dir")})
+        return cls(**{k: _resolve(cfg[k]) for k in ("raw_dir", "processed_dir", "artifacts_dir", "runs_dir")})
 
 @dataclass(frozen=True)
 class Classes:
@@ -76,3 +77,69 @@ class Convert:
     @classmethod
     def load(cls) -> "Convert":
         return cls(**load_yaml("convert.yaml"))
+
+AUGMENTATION_KEYS = ("fliplr", "flipud", "hsv_h", "hsv_s", "hsv_v", "degrees", "translate", "scale", "shear",
+                     "perspective", "mosaic", "close_mosaic", "mixup", "cutmix", "copy_paste", "bgr")
+UNIT_INTERVAL_KEYS = ("fliplr", "flipud", "hsv_h", "hsv_s", "hsv_v", "translate", "mosaic", "mixup", "cutmix",
+                      "copy_paste", "bgr")
+DEVICES = ("mps", "cuda", "cpu")
+
+@dataclass(frozen=True)
+class Train:
+    model: str
+    imgsz: int
+    epochs: int
+    patience: int
+    batch: int
+    device: str
+    seed: int
+    deterministic: bool
+    cache: bool | str
+    max_det: int
+    name: str
+    augmentation: dict[str, float]
+    fraction: float = 1.0
+
+    def __post_init__(self):
+        aug = self.augmentation
+        if set(aug) != set(AUGMENTATION_KEYS):
+            raise ValueError(f"augmentation must set exactly {list(AUGMENTATION_KEYS)}; "
+                             f"missing {sorted(set(AUGMENTATION_KEYS) - set(aug))}, "
+                             f"unknown {sorted(set(aug) - set(AUGMENTATION_KEYS))}")
+        bad = [k for k, v in aug.items() if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0
+               or (k in UNIT_INTERVAL_KEYS and v > 1)]
+        if bad:
+            raise ValueError(f"augmentation values out of range: {bad}")
+        if self.device not in DEVICES:
+            raise ValueError(f"device must be one of {DEVICES}, got {self.device!r}")
+        if self.cache not in (False, "ram"):
+            raise ValueError(f"cache must be false or 'ram' ('disk' writes into the dataset), got {self.cache!r}")
+        if self.imgsz <= 0 or self.imgsz % 32:
+            raise ValueError(f"imgsz must be a positive multiple of 32, got {self.imgsz}")
+        for k in ("epochs", "patience", "batch", "max_det"):
+            if getattr(self, k) < 1:
+                raise ValueError(f"{k} must be >= 1, got {getattr(self, k)}")
+        if not 0 < self.fraction <= 1:
+            raise ValueError(f"fraction must be in (0, 1], got {self.fraction}")
+
+    @classmethod
+    def from_dict(cls, cfg: dict, smoke: bool = False) -> "Train":
+        cfg = dict(cfg)
+        overrides = cfg.pop("smoke", {}) or {}
+        fields = set(cls.__dataclass_fields__)
+        for where, keys in (("train.yaml", set(cfg)), ("smoke", set(overrides))):
+            if unknown := keys - fields:
+                raise ValueError(f"unknown keys in {where}: {sorted(unknown)}")
+        if "augmentation" in overrides:
+            raise ValueError("smoke must not override augmentation")
+        return cls(**(cfg | overrides if smoke else cfg))
+
+    @classmethod
+    def load(cls, smoke: bool = False) -> "Train":
+        return cls.from_dict(load_yaml("train.yaml"), smoke)
+
+    def ultralytics_args(self) -> dict:
+        """Keyword arguments for `YOLO.train`, excluding data, project and name."""
+        args = {k: getattr(self, k) for k in ("imgsz", "epochs", "patience", "batch", "device", "seed",
+                                              "deterministic", "cache", "max_det", "fraction")}
+        return args | self.augmentation | {"augmentations": []}
