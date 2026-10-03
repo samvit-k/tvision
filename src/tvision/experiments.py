@@ -17,7 +17,7 @@ import random
 import re
 import shutil
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 import cv2
@@ -451,6 +451,14 @@ def build_view(source: Path, view: Path, classes: Classes, exclude: list[str]) -
     return {"images": n_src, "images_identical": not differ, "names": classes.names,
             "passed": not differ and len(list((view / "labels" / "val").glob("*.txt"))) == n_src}
 
+def headline_diff(full: pd.DataFrame, viewed: pd.DataFrame, headline: list[str]) -> dict:
+    """Headline classes only: AP columns must be identical; P/R/F1 differences are recorded, not compared."""
+    ap = float((full.loc[headline, AP_COLUMNS] - viewed.loc[headline, AP_COLUMNS]).abs().to_numpy().max())
+    pr = float((full.loc[headline, PR_COLUMNS] - viewed.loc[headline, PR_COLUMNS]).abs().to_numpy().max())
+    same_instances = bool((full.loc[headline, "Instances"] == viewed.loc[headline, "Instances"]).all())
+    return {"identical": ap == 0.0 and same_instances, "ap_max_abs_diff": ap, "pr_max_abs_diff": pr,
+            "headline_instances_equal": same_instances}
+
 def comparability(ctx: Context) -> bool:
     """Frozen baseline best.pt on val vs. on the ambiguous-removed 3-class view: headline AP must be identical."""
     require_baseline(ctx)
@@ -465,19 +473,15 @@ def comparability(ctx: Context) -> bool:
     cfg, weights = Train.load(), ctx.baseline_dir / "weights" / "best.pt"
     full, _ = tr.per_class_val(tr.validate_val(weights, ctx.paths.processed_dir / "data.yaml", cfg, out, "full"),
                                ctx.classes)
-    viewed, _ = tr.per_class_val(tr.validate_val(weights, view / "data.yaml", cfg, out, "view"), ctx.classes)
-    rows = ctx.classes.headline
-    ap = float((full.loc[rows, AP_COLUMNS] - viewed.loc[rows, AP_COLUMNS]).abs().to_numpy().max())
-    pr = float((full.loc[rows, PR_COLUMNS] - viewed.loc[rows, PR_COLUMNS]).abs().to_numpy().max())
-    same_instances = bool((full.loc[rows, "Instances"] == viewed.loc[rows, "Instances"]).all())
+    headline_only = replace(ctx.classes, names=ctx.classes.headline)  # the view has no ambiguous GT, so no row
+    viewed, _ = tr.per_class_val(tr.validate_val(weights, view / "data.yaml", cfg, out, "view"), headline_only)
+    diff = headline_diff(full, viewed, ctx.classes.headline)
     recorded = pd.DataFrame(json.loads((ctx.baseline_dir / "val_best.json").read_text())["per_class"]).set_index("Class")
+    ap, pr = diff["ap_max_abs_diff"], diff["pr_max_abs_diff"]
     result = {
-        "identical": ap == 0.0 and same_instances,
-        "headline_classes": rows,
+        **diff,
+        "headline_classes": ctx.classes.headline,
         "ap_columns": AP_COLUMNS,
-        "ap_max_abs_diff": ap,
-        "pr_max_abs_diff": pr,
-        "headline_instances_equal": same_instances,
         "full_matches_recorded_val_best": bool(np.allclose(full[tr.METRIC_COLUMNS].to_numpy(dtype=float),
                                                            recorded.loc[full.index, tr.METRIC_COLUMNS].to_numpy(dtype=float))),
         "note": ("AP is computed per class from that class's predictions and GT only, so removing ambiguous GT "

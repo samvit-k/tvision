@@ -362,3 +362,14 @@ def test_comparability_view_keeps_three_class_schema(tmp_path):
     data = yaml.safe_load((view / "data.yaml").read_text())
     assert data["names"] == dict(enumerate(CLASSES.names)) and data["val"] == "images/val"
     assert not (view / "images" / "test").exists() and not (view / "images" / "train").exists()
+
+def test_headline_diff_compares_ap_only():
+    cols = ["Instances", *ex.PR_COLUMNS, *ex.AP_COLUMNS]
+    full = pd.DataFrame([[3094, 0.53, 0.68, 0.6, 0.603, 0.201, 0.273], [4324, 0.61, 0.65, 0.63, 0.635, 0.156, 0.267],
+                         [1612, 0.3, 0.14, 0.19, 0.149, 0.02, 0.052]], index=CLASSES.names, columns=cols)
+    viewed = full.loc[CLASSES.headline].copy()
+    viewed["Box-P"] += 0.01
+    diff = ex.headline_diff(full, viewed, CLASSES.headline)
+    assert diff["identical"] and diff["pr_max_abs_diff"] == pytest.approx(0.01)
+    viewed.loc["tumor", "mAP75"] += 1e-5
+    assert not ex.headline_diff(full, viewed, CLASSES.headline)["identical"]
