@@ -44,7 +44,7 @@ experiments:
   a2_geometry:
     factors: [geometry]
     compare_to: a0_control
-    augmentation: {scale: 0.2, translate: 0.1}
+    augmentation: {scale: 0.1, translate: 0.05}
   a3_imgsz768:
     factors: [imgsz]
     compare_to: a0_control
