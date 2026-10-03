@@ -16,6 +16,22 @@ def main() -> int:
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--smoke", action="store_true", help="Apply the smoke overrides from configs/train.yaml")
     mode.add_argument("--check", action="store_true", help="Run only the verify gate and Ultralytics loader check")
+    sub.add_parser("baseline-manifest", help="Hash every frozen baseline artifact once (Step 5A anchor)")
+    sub.add_parser("two-class", help="Derive the two-class train/val dataset (configs/two_class.yaml)")
+    sub.add_parser("comparability", help="Baseline best.pt on val vs. the ambiguous-removed 3-class view")
+    p = sub.add_parser("aug-preview", help="Render augmented training samples of an experiment for review")
+    p.add_argument("name")
+    p.add_argument("--n", type=int, default=8)
+    p.add_argument("--variants", type=int, default=3)
+    p.add_argument("--seed", type=int, default=0)
+    p = sub.add_parser("experiment", help="Train one Step 5A experiment (configs/experiments.yaml)")
+    p.add_argument("name")
+    p.add_argument("--seed", type=int, required=True)
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--smoke", action="store_true", help="Apply the smoke overrides from configs/experiments.yaml")
+    mode.add_argument("--check", action="store_true", help="Run only the gates and Ultralytics loader check")
+    sub.add_parser("compare", help="Compare Step 5A runs on val")
+    sub.add_parser("select", help="Apply the validation-only selection rule and freeze the choice")
     args = parser.parse_args()
 
     if args.command == "explore":
@@ -33,6 +49,28 @@ def main() -> int:
     if args.command == "train":
         from tvision.train import train
         return 0 if train(args.smoke, args.check) else 1
+    if args.command == "baseline-manifest":
+        from tvision.experiments import baseline_manifest
+        return 0 if baseline_manifest() else 1
+    if args.command == "two-class":
+        from tvision.two_class import two_class
+        return 0 if two_class() else 1
+    if args.command == "comparability":
+        from tvision.experiments import Context, comparability
+        return 0 if comparability(Context.load()) else 1
+    if args.command == "aug-preview":
+        from tvision.experiments import Context, aug_preview
+        aug_preview(Context.load(), args.name, args.n, args.variants, args.seed)
+        return 0
+    if args.command == "experiment":
+        from tvision.experiments import experiment
+        return 0 if experiment(args.name, args.seed, args.smoke, args.check) else 1
+    if args.command == "compare":
+        from tvision.selection import compare_runs
+        return 0 if compare_runs() else 1
+    if args.command == "select":
+        from tvision.selection import select_final
+        return 0 if select_final() else 1
     return 2
 
 if __name__ == "__main__":

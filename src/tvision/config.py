@@ -78,11 +78,30 @@ class Convert:
     def load(cls) -> "Convert":
         return cls(**load_yaml("convert.yaml"))
 
+@dataclass(frozen=True)
+class TwoClass:
+    processed_dir: Path
+    exclude: list[str]
+    splits: list[str]
+
+    def __post_init__(self):
+        if not self.exclude:
+            raise ValueError("two_class.yaml must exclude at least one class")
+        if not self.splits or not set(self.splits) <= {"train", "val"}:
+            raise ValueError(f"two-class splits must be train and/or val (test is derived in Step 6), got {self.splits}")
+
+    @classmethod
+    def load(cls) -> "TwoClass":
+        cfg = load_yaml("two_class.yaml")
+        return cls(_resolve(cfg["processed_dir"]), cfg["exclude"], cfg["splits"])
+
 AUGMENTATION_KEYS = ("fliplr", "flipud", "hsv_h", "hsv_s", "hsv_v", "degrees", "translate", "scale", "shear",
                      "perspective", "mosaic", "close_mosaic", "mixup", "cutmix", "copy_paste", "bgr")
 UNIT_INTERVAL_KEYS = ("fliplr", "flipud", "hsv_h", "hsv_s", "hsv_v", "translate", "mosaic", "mixup", "cutmix",
                       "copy_paste", "bgr")
 DEVICES = ("mps", "cuda", "cpu")
+OPTIMIZER_KEYS = ("optimizer", "lr0", "momentum", "weight_decay", "nbs", "lrf", "cos_lr", "warmup_epochs",
+                  "warmup_momentum", "warmup_bias_lr")
 
 @dataclass(frozen=True)
 class Train:
@@ -99,6 +118,7 @@ class Train:
     name: str
     augmentation: dict[str, float]
     fraction: float = 1.0
+    optimizer: dict | None = None
 
     def __post_init__(self):
         aug = self.augmentation
@@ -121,6 +141,11 @@ class Train:
                 raise ValueError(f"{k} must be >= 1, got {getattr(self, k)}")
         if not 0 < self.fraction <= 1:
             raise ValueError(f"fraction must be in (0, 1], got {self.fraction}")
+        if self.optimizer is not None:
+            if set(self.optimizer) != set(OPTIMIZER_KEYS):
+                raise ValueError(f"optimizer must set exactly {list(OPTIMIZER_KEYS)}, got {sorted(self.optimizer)}")
+            if self.optimizer["optimizer"] == "auto":
+                raise ValueError("a pinned optimizer must name the optimizer, not 'auto'")
 
     @classmethod
     def from_dict(cls, cfg: dict, smoke: bool = False) -> "Train":
@@ -142,4 +167,4 @@ class Train:
         """Keyword arguments for `YOLO.train`, excluding data, project and name."""
         args = {k: getattr(self, k) for k in ("imgsz", "epochs", "patience", "batch", "device", "seed",
                                               "deterministic", "cache", "max_det", "fraction")}
-        return args | self.augmentation | {"augmentations": []}
+        return args | self.augmentation | {"augmentations": []} | (self.optimizer or {})

@@ -1,0 +1,55 @@
+baseline_manifest_sha256: 62bb5e2a17de304832aa2e9aae8b1ad331a6ea951a94b1babc2b1d55a418ab59
+
+control:
+  model: yolo26n.pt
+  imgsz: 640
+  epochs: 100
+  patience: 30
+  batch: 16
+  device: mps
+  deterministic: true
+  cache: false
+  max_det: 1000
+  optimizer: from_baseline
+  augmentation:
+    fliplr: 0.5
+    flipud: 0.5
+    hsv_h: 0.0
+    hsv_s: 0.0
+    hsv_v: 0.0
+    degrees: 0.0
+    translate: 0.0
+    scale: 0.0
+    shear: 0.0
+    perspective: 0.0
+    mosaic: 0.0
+    close_mosaic: 0
+    mixup: 0.0
+    cutmix: 0.0
+    copy_paste: 0.0
+    bgr: 0.0
+
+smoke:
+  epochs: 2
+  fraction: 0.1
+
+experiments:
+  a0_control:
+    factors: []
+    compare_to: null
+  a1_appearance:
+    factors: [appearance]
+    compare_to: a0_control
+    augmentation: {hsv_h: 0.01, hsv_s: 0.3, hsv_v: 0.2}
+  a2_geometry:
+    factors: [geometry]
+    compare_to: a0_control
+    augmentation: {scale: 0.2, translate: 0.1}
+  a3_imgsz768:
+    factors: [imgsz]
+    compare_to: a0_control
+    imgsz: 768
+  a4_two_class:
+    factors: [two_class]
+    compare_to: a0_control
+    dataset: two_class
