@@ -53,3 +53,8 @@ experiments:
     factors: [two_class]
     compare_to: a0_control
     dataset: two_class
+  b2_yolo26s:
+    factors: [model]
+    compare_to: a2_geometry
+    model: yolo26s.pt
+    augmentation: {scale: 0.1, translate: 0.05}
