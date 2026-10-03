@@ -168,10 +168,11 @@ def validate_val(weights: Path, data_yaml: Path, cfg: Train, project: Path, name
 
 def fit(cfg: Train, processed: Path, classes: Classes, run_dir: Path, report: Path, fingerprint: dict, *,
         splits=SPLITS, smoke: bool = False, check_only: bool = False, trainer_cls=None, fitness_csv: str | None = None,
-        extra_meta: dict | None = None, after=None) -> bool:
+        extra_meta: dict | None = None, after=None, verdict=None) -> bool:
     """Loader check, training into `run_dir`, val of best.pt, run_meta.json and the report.
 
     `after(trainer, metrics, meta, checks)` may return further checks, recorded with the others.
+    `verdict(checks)` decides the return value; by default every check must pass.
     """
     data_yaml = processed / "data.yaml"
     loader = loader_check(processed, classes, splits)
@@ -245,7 +246,7 @@ def fit(cfg: Train, processed: Path, classes: Classes, run_dir: Path, report: Pa
         if k not in ("gate", "loader_counts_match"):
             print(f"[{'PASS' if c['passed'] else 'FAIL'}] {k}: {c['detail']}")
     print(f"Run: {run_dir}\nReport: {report / 'summary.md'}")
-    return all(c["passed"] for c in checks.values())
+    return verdict(checks) if verdict is not None else all(c["passed"] for c in checks.values())
 
 def run_training(cfg: Train, paths: Paths, classes: Classes, smoke: bool = False, check_only: bool = False) -> bool:
     fingerprint = gate(paths.processed_dir, paths.artifacts_dir / "verify")

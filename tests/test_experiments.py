@@ -373,3 +373,31 @@ def test_headline_diff_compares_ap_only():
     assert diff["identical"] and diff["pr_max_abs_diff"] == pytest.approx(0.01)
     viewed.loc["tumor", "mAP75"] += 1e-5
     assert not ex.headline_diff(full, viewed, CLASSES.headline)["identical"]
+
+def _np_check(after_warmup: bool, fell: bool = True, failed=()) -> dict:
+    return {"passed": not failed and after_warmup and fell,
+            "detail": {"failed_checks": list(failed), "best_epoch": 2, "best_after_warmup": after_warmup,
+                       "train_box_loss_fell": fell}}
+
+@pytest.mark.parametrize("checks, ok", [
+    ({"losses_finite": {"passed": True}, "non_pathological": _np_check(False)}, True),
+    ({"losses_finite": {"passed": True}, "non_pathological": _np_check(True)}, True),
+    ({"non_pathological": _np_check(False, fell=False)}, False),
+    ({"non_pathological": _np_check(False, failed=["optimizer_pinned"])}, False),
+    ({"losses_finite": {"passed": False}, "non_pathological": _np_check(False)}, False),
+    ({"reproduces_baseline": {"passed": False, "detail": {}}}, False),
+])
+def test_smoke_verdict_tolerates_only_the_warmup_condition(checks, ok):
+    assert ex.smoke_verdict(checks) is ok
+
+@pytest.mark.parametrize("smoke", [False, True])
+def test_only_smoke_runs_use_the_smoke_verdict(tmp_path, monkeypatch, smoke):
+    ctx = _experiment_ctx(tmp_path)
+    ctx.comparability_dir.mkdir(parents=True)
+    (ctx.comparability_dir / "result.json").write_text(json.dumps({"identical": True}))
+    seen = {}
+    monkeypatch.setattr(tr, "fit", lambda *a, **k: seen.update(k) or True)
+    assert ex.run_experiment(ctx, "a0_control", 0, smoke=smoke)
+    assert seen["verdict"] is (ex.smoke_verdict if smoke else None)
+    full = {"non_pathological": _np_check(False)}
+    assert (seen["verdict"] or (lambda c: all(x["passed"] for x in c.values())))(full) is smoke

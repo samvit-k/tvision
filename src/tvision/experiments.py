@@ -386,6 +386,18 @@ def non_pathological(checks: dict, diag: dict, warmup_epochs: float) -> dict:
                   {"failed_checks": failed, "best_epoch": diag["best_epoch"], "best_after_warmup": after_warmup,
                    "train_box_loss_fell": learned})
 
+def smoke_verdict(checks: dict) -> bool:
+    """Smoke exit status: as strict as a full run, except that non_pathological may fail on its warmup condition
+    alone, because a smoke run is shorter than the warmup. The recorded check is not changed."""
+    def ok(name: str, check: dict) -> bool:
+        if check["passed"]:
+            return True
+        if name != "non_pathological":
+            return False
+        d = check["detail"]
+        return not d["failed_checks"] and d["train_box_loss_fell"] and not d["best_after_warmup"]
+    return all(ok(k, c) for k, c in checks.items())
+
 def dataset_for(ctx: Context, dataset: str) -> tuple[Path, Classes, list[str], dict, dict]:
     """(processed dir, classes, loader splits, gated fingerprint, extra run_meta) for a dataset name."""
     if dataset == "three_class":
@@ -431,7 +443,7 @@ def run_experiment(ctx: Context, name: str, seed: int, smoke: bool = False, chec
                   "baseline_untouched_before": before["detail"], **extra}
     return tr.fit(cfg, processed, classes, run_dir, report, fingerprint, splits=splits, smoke=smoke,
                   check_only=check_only, trainer_cls=headline_trainer(classes.headline), fitness_csv=HEADLINE_CSV,
-                  extra_meta=extra_meta, after=after)
+                  extra_meta=extra_meta, after=after, verdict=smoke_verdict if smoke else None)
 
 def build_view(source: Path, view: Path, classes: Classes, exclude: list[str]) -> dict:
     """Val images and labels with only `exclude` GT lines removed, under the unchanged class schema."""
