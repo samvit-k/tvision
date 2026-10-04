@@ -40,8 +40,8 @@ CONF_GRID = np.round(np.arange(0.01, 1.0, 0.01), 2)
 AP_TOL = 1e-4
 LOCALIZATION_IOU = 0.1
 CM_IOU = inspect.signature(ConfusionMatrix.process_batch).parameters["iou_thres"].default
-KINDS = ("misclassified", "fp_localization", "fp_background", "fn_missed")
-PRED_KINDS = ("tp", "misclassified", "fp_localization", "fp_background")
+KINDS = ("misclassified", "fp_duplicate", "fp_localization", "fp_background", "fn_missed")
+PRED_KINDS = ("tp", "misclassified", "fp_duplicate", "fp_localization", "fp_background")
 IMAGE_SCALE = 2
 GRID_COLUMNS = 4
 OUTPUTS = ("checks.json", "result.json", "summary.md", "operating_points.json", "baseline", "final", "galleries")
@@ -100,7 +100,8 @@ def unscale(boxes: "torch.Tensor", pbatch: dict) -> np.ndarray:
     return ops.xywh2xyxy(xywh).cpu().numpy().astype(np.float64)
 
 def recording_validator(store: dict) -> type[DetectionValidator]:
-    """A DetectionValidator that also records every image's post-NMS predictions in original pixels."""
+    """A DetectionValidator that also records every image's post-NMS predictions in original pixels and its
+    confusion-matrix increment."""
     class RecordingValidator(DetectionValidator):
         def update_metrics(self, preds, batch):
             for si, pred in enumerate(preds):
@@ -109,6 +110,16 @@ def recording_validator(store: dict) -> type[DetectionValidator]:
                                         "conf": pred["conf"].cpu().numpy().astype(np.float32, copy=False),
                                         "cls": pred["cls"].cpu().numpy().astype(int)})
             super().update_metrics(preds, batch)
+
+        def init_metrics(self, model):
+            super().init_metrics(model)
+            cm, process = self.confusion_matrix, self.confusion_matrix.process_batch
+
+            def recorded(*args, **kwargs):
+                before = cm.matrix.copy()
+                process(*args, **kwargs)
+                store["cm_deltas"].append((cm.matrix - before).astype(int))
+            cm.process_batch = recorded
 
         def finalize_metrics(self):
             super().finalize_metrics()
@@ -119,7 +130,7 @@ def run_val(model: Model, data_yaml: Path, split: str, out: Path):
     """One Ultralytics val pass of `model` on `split` with its recorded settings; returns metrics and predictions."""
     if out.exists():
         raise RuntimeError(f"{out} already exists")
-    store = {"images": []}
+    store = {"images": [], "cm_deltas": []}
     metrics = YOLO(model.weights).val(validator=recording_validator(store), data=str(data_yaml), split=split,
                                       imgsz=model.imgsz, max_det=model.max_det, batch=model.batch, device=model.device,
                                       project=str(out.parent), name=out.name, exist_ok=False, plots=True)
@@ -165,20 +176,35 @@ def match_class_aware(pred_cls: np.ndarray, gt_cls: np.ndarray, iou: np.ndarray,
             correct[m[:, 1], i] = True
     return correct
 
-def agnostic_match(iou: np.ndarray, thr: float, strict: bool) -> np.ndarray:
-    """Matched prediction index per GT (-1 if none), one-to-one greedy by IoU regardless of class."""
+def agnostic_match(iou: np.ndarray, thr: float, strict: bool, conf: np.ndarray | None = None) -> np.ndarray:
+    """Matched prediction index per GT (-1 if none), one-to-one greedy by IoU regardless of class.
+
+    Without `conf` the order is Ultralytics' (exact IoU ties fall to argsort order); with `conf`, exactly tied
+    candidates go to the most confident prediction.
+    """
     gi, pi = np.nonzero(iou > thr if strict else iou >= thr)
     gt_match = np.full(iou.shape[0], -1)
     if not len(gi):
         return gt_match
     m = np.stack([gi, pi, iou[gi, pi]], 1)
     if len(m) > 1:
-        m = m[m[:, 2].argsort()[::-1]]
+        def order(m):
+            return m[:, 2].argsort()[::-1] if conf is None else np.lexsort((-conf[m[:, 1].astype(int)], -m[:, 2]))
+        m = m[order(m)]
         m = m[np.unique(m[:, 1], return_index=True)[1]]
-        m = m[m[:, 2].argsort()[::-1]]
+        m = m[order(m)]
         m = m[np.unique(m[:, 0], return_index=True)[1]]
     gt_match[m[:, 0].astype(int)] = m[:, 1].astype(int)
     return gt_match
+
+def has_ties(iou: np.ndarray, thr: float) -> bool:
+    """Whether any GT or prediction has two competing candidates with exactly equal IoU above `thr`."""
+    for lines in (iou, iou.T):
+        for line in lines:
+            v = line[line > thr]
+            if len(v) != len(np.unique(v)):
+                return True
+    return False
 
 def match_stats(records: list[dict], gt: dict) -> list[dict]:
     out = []
@@ -249,8 +275,6 @@ def scoring_checks(prefix: str, metrics, store: dict, gt: dict, stats: list[dict
     same_classes = present == [c for c in range(nc) if instances[c]]
     diff = float(np.abs(ours[present] - box.all_ap).max()) if same_classes else None
     same_instances = np.array_equal(instances, metrics.nt_per_class)
-    cm = confusion(store["images"], gt, nc, store["conf"], CM_IOU)
-    theirs = np.asarray(metrics.confusion_matrix.matrix)
     return {
         f"{prefix}/predictions_complete": _check(complete, {"images": len(stems), "label_files": len(gt),
                                                              "seen": store["seen"]}),
@@ -259,10 +283,35 @@ def scoring_checks(prefix: str, metrics, store: dict, gt: dict, stats: list[dict
                                                    {"max_abs_ap_diff": diff, "tolerance": AP_TOL,
                                                     "instances": instances.tolist(), "same_classes": same_classes,
                                                     "same_instances": same_instances}),
-        f"{prefix}/confusion_matches_ultralytics": _check(np.array_equal(cm, theirs),
-                                                          {"conf": store["conf"], "iou": CM_IOU,
-                                                           "max_abs_diff": float(np.abs(cm - theirs).max())}),
+        f"{prefix}/confusion_matches_ultralytics": confusion_check(store, gt, np.asarray(metrics.confusion_matrix.matrix),
+                                                                   nc),
     }
+
+def confusion_check(store: dict, gt: dict, total: np.ndarray, nc: int) -> dict:
+    """Per image, our confusion matrix must equal Ultralytics' increment exactly, unless the image has exact IoU
+    ties among competing candidates (multi-label NMS emits the same box once per class), where Ultralytics'
+    assignment depends on argsort tie order. Tied images must still agree on missed GTs per true class (the
+    background row), i.e. on every GT's matched/missed status. The increments must sum to Ultralytics' matrix."""
+    deltas, conf = store["cm_deltas"], store["conf"]
+    exact, fn_row, moved, tied = [], [], {}, 0
+    for r, d in zip(store["images"], deltas):
+        gc, gb = gt[r["stem"]]
+        ours = confusion([r], gt, nc, conf, CM_IOU)
+        ties = has_ties(box_iou(gb, r["boxes"][r["conf"] > conf]), CM_IOU)
+        tied += ties
+        if np.array_equal(ours, d):
+            continue
+        if not ties:
+            exact.append(r["stem"])
+        elif not np.array_equal(ours[nc], d[nc]):
+            fn_row.append(r["stem"])
+        else:
+            moved[r["stem"]] = int(np.abs(ours - d).sum())
+    summed = len(deltas) == len(store["images"]) and np.array_equal(sum(deltas), total.astype(int))
+    return _check(summed and not exact and not fn_row,
+                  {"conf": conf, "iou": CM_IOU, "images_with_ties": tied, "increments_sum_to_matrix": summed,
+                   "mismatched_without_ties": exact, "mismatched_missed_gts": fn_row,
+                   "tie_order_differences": moved})
 
 def operating_prf(records: list[dict], gt: dict, conf: float, iou: float, nc: int) -> dict:
     """Per-class TP/FP/FN, precision, recall and F1 after keeping predictions with confidence > `conf`."""
@@ -305,10 +354,13 @@ def operating_threshold(records: list[dict], gt: dict, headline_ids: list[int], 
             "grid": CONF_GRID.tolist(), "curve": curve}
 
 def errors(records: list[dict], gt: dict, conf: float, iou: float) -> pd.DataFrame:
-    """Every kept prediction and every GT box at the operating point, by kind (class-agnostic matching, IoU >= iou).
+    """Every kept prediction and every GT box at the operating point, by kind (class-agnostic matching, IoU >= iou;
+    exactly tied candidates go to the most confident prediction).
 
-    `gt_index` is the matched GT, the nearest GT for fp_localization, or the missed GT itself; `pred_index` is the
-    prediction, or the nearest kept prediction for fn_missed. `iou` is between those two (0 when there is none).
+    An unmatched prediction is fp_duplicate if its best IoU is >= iou (that GT went to another prediction),
+    fp_localization if it is in [LOCALIZATION_IOU, iou), else fp_background. `gt_index` is the matched GT, the nearest
+    GT for unmatched predictions, or the missed GT itself; `pred_index` is the prediction, or the nearest kept
+    prediction for fn_missed. `iou` is between those two (0 when there is none).
     """
     rows = []
     for r in records:
@@ -316,7 +368,7 @@ def errors(records: list[dict], gt: dict, conf: float, iou: float) -> pd.DataFra
         keep = np.flatnonzero(r["conf"] > conf)
         pc, pb, pconf = r["cls"][keep], r["boxes"][keep], r["conf"][keep]
         m = box_iou(gb, pb)
-        gm = agnostic_match(m, iou, strict=False)
+        gm = agnostic_match(m, iou, strict=False, conf=pconf)
         matched = {int(d): g for g, d in enumerate(gm) if d >= 0}
         for d in range(len(pc)):
             if d in matched:
@@ -324,7 +376,9 @@ def errors(records: list[dict], gt: dict, conf: float, iou: float) -> pd.DataFra
                 kind = "tp" if pc[d] == gc[g] else "misclassified"
             else:
                 g = int(m[:, d].argmax()) if len(gc) and m[:, d].max() > 0 else -1
-                kind = "fp_localization" if g >= 0 and m[g, d] >= LOCALIZATION_IOU else "fp_background"
+                best = m[g, d] if g >= 0 else 0.0
+                kind = ("fp_duplicate" if best >= iou else "fp_localization" if best >= LOCALIZATION_IOU
+                        else "fp_background")
             rows.append(_row(r["stem"], kind, int(keep[d]), g, pc[d], gc, pconf[d], m, d, pb[d], gb))
         for g in np.flatnonzero(gm < 0):
             d = int(m[g].argmax()) if len(pc) and m[g].max() > 0 else -1

@@ -94,6 +94,58 @@ def test_confusion_equals_ultralytics():
                              conf=conf, iou_thres=iou)
         np.testing.assert_array_equal(evl.confusion(records, gt, NC, conf, iou), cm.matrix.astype(int))
 
+def test_has_ties_detects_equal_competing_ious_only():
+    assert not evl.has_ties(np.array([[0.9, 0.6], [0.2, 0.7]]), 0.45)
+    assert evl.has_ties(np.array([[0.8, 0.8], [0.1, 0.2]]), 0.45)
+    assert evl.has_ties(np.array([[0.7, 0.1], [0.7, 0.2]]), 0.45)
+    assert not evl.has_ties(np.array([[0.3, 0.3]]), 0.45)
+
+def _duplicate_image():
+    """One GT tumor and the same box predicted as tumor and non_tumor (multi-label NMS), plus a second GT."""
+    t, n = HEADLINE
+    gt = {"x": (np.array([t, n]), np.array([[0, 0, 10, 10], [50, 0, 60, 10.0]]))}
+    rec = {"stem": "x", "boxes": np.array([[0, 0, 10, 10], [0, 0, 10, 10], [50, 0, 60, 10.0]]),
+           "conf": np.array([0.6, 0.9, 0.8], np.float32), "cls": np.array([t, n, n])}
+    return rec, gt
+
+def test_confusion_check_is_exact_except_for_tie_order():
+    rec, gt = _duplicate_image()
+    ours = evl.confusion([rec], gt, NC, 0.001, evl.CM_IOU)
+    store = {"images": [rec], "cm_deltas": [ours], "conf": 0.001}
+    assert evl.confusion_check(store, gt, ours, NC)["passed"]
+    t, n = HEADLINE
+    swapped = ours.copy()
+    swapped[t, t], swapped[n, t], swapped[t, NC], swapped[n, NC] = (ours[n, t], ours[t, t], ours[n, NC], ours[t, NC])
+    check = evl.confusion_check(store | {"cm_deltas": [swapped]}, gt, swapped, NC)
+    assert check["passed"] and check["detail"]["tie_order_differences"] == {"x": 4}
+    missed = ours.copy()
+    missed[NC, t] += 1
+    missed[t, t] -= 1
+    assert not evl.confusion_check(store | {"cm_deltas": [missed]}, gt, missed, NC)["passed"]
+    assert not evl.confusion_check(store, gt, ours + 1, NC)["detail"]["increments_sum_to_matrix"]
+
+def test_confusion_check_requires_exact_match_without_ties():
+    rec, gt = _hand_built()[:2]
+    rec = {k: v[:5] if k != "stem" else v for k, v in rec[0].items()}
+    ours = evl.confusion([rec], gt, NC, 0.001, evl.CM_IOU)
+    assert not evl.has_ties(evl.box_iou(gt["x"][1], rec["boxes"]), evl.CM_IOU)
+    wrong = ours.copy()
+    wrong[0, 0] -= 1
+    wrong[1, 0] += 1
+    check = evl.confusion_check({"images": [rec], "cm_deltas": [wrong], "conf": 0.001}, gt, wrong, NC)
+    assert not check["passed"] and check["detail"]["mismatched_without_ties"] == ["x"]
+
+def test_operating_point_ties_go_to_the_most_confident_duplicate():
+    rec, gt = _duplicate_image()
+    t, n = HEADLINE
+    err = evl.errors([rec], gt, 0.5, 0.5).set_index("pred_index")
+    assert err.loc[1, "kind"] == "misclassified" and err.loc[0, "kind"] == "fp_duplicate"
+    rec["conf"] = np.array([0.9, 0.6, 0.8], np.float32)
+    err = evl.errors([rec], gt, 0.5, 0.5).set_index("pred_index")
+    assert err.loc[0, "kind"] == "tp" and err.loc[1, "kind"] == "fp_duplicate"
+    cm = evl.cm_from_errors(err.reset_index(), NC)
+    assert cm[t, t] == 1 and cm[n, NC] == 1 and cm[n, n] == 1
+
 def test_unscale_inverts_letterbox_without_clipping():
     pbatch = {"imgsz": (640, 640), "ori_shape": (300, 400), "ratio_pad": ((1.6, 1.6), (0, 80))}
     inside = torch.tensor([[16.0, 96.0, 160.0, 400.0]])
@@ -331,7 +383,8 @@ def test_recording_validator_reproduces_ultralytics_on_cpu(tmp_path):
     metrics, store = evl.run_val(model, paths.processed_dir / "data.yaml", "val", tmp_path / "out" / "val")
     nc = len(metrics.names)
     gt = evl.ground_truth(paths.processed_dir, "val", nc)
-    assert len(store["images"]) == store["seen"] == len(gt) and store["conf"] == 0.001
+    assert len(store["images"]) == store["seen"] == len(gt) == len(store["cm_deltas"]) and store["conf"] == 0.001
+    np.testing.assert_array_equal(sum(store["cm_deltas"]), metrics.confusion_matrix.matrix)
     checks = evl.scoring_checks("final/val", metrics, store, gt, evl.match_stats(store["images"], gt), nc)
     assert all(c["passed"] for c in checks.values()), checks
     with pytest.raises(RuntimeError, match="already exists"):
