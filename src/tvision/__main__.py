@@ -1,5 +1,8 @@
 import argparse
 import sys
+from pathlib import Path
+
+from tvision.config import DEVICES
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="tvision")
@@ -34,7 +37,21 @@ def main() -> int:
     sub.add_parser("select", help="Apply the validation-only selection rule and freeze the choice")
     p = sub.add_parser("evaluate", help="Evaluate the frozen baseline and selected model on the test split (once)")
     p.add_argument("--check", action="store_true", help="Run only the gates and the val phase; never touches test")
+    p = sub.add_parser("predict", help="Detect nuclei in H&E images with the selected model (configs/inference.yaml)")
+    p.add_argument("images", nargs="*", type=Path)
+    p.add_argument("--conf", type=float, help="Confidence threshold (default: the val-chosen threshold)")
+    p.add_argument("--device", choices=DEVICES)
+    p.add_argument("--out", type=Path, help="Write <stem>.json (and <stem>.png) here instead of JSON to stdout")
+    p.add_argument("--annotate", action="store_true", help="Also write an OpenCV-annotated PNG (needs --out)")
+    p.add_argument("--check", action="store_true", help="Val-only parity check against Step 6; never touches test")
     args = parser.parse_args()
+    if args.command == "predict":
+        if args.check and (args.images or args.conf is not None or args.device or args.out or args.annotate):
+            parser.error("predict --check takes no images or other options")
+        if not args.check and not args.images:
+            parser.error("predict needs at least one image (or --check)")
+        if args.annotate and args.out is None:
+            parser.error("--annotate needs --out")
 
     if args.command == "explore":
         from tvision.explore import explore
@@ -76,6 +93,12 @@ def main() -> int:
     if args.command == "evaluate":
         from tvision.evaluate import evaluate
         return 0 if evaluate(args.check) else 1
+    if args.command == "predict":
+        if args.check:
+            from tvision.inference_check import inference_check
+            return 0 if inference_check() else 1
+        from tvision.inference import predict_images
+        return predict_images(args.images, args.conf, args.device, args.out, args.annotate)
     return 2
 
 if __name__ == "__main__":

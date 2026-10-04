@@ -10,6 +10,7 @@ dependencies = [
     "pyyaml",
     "opencv-python",
     "ultralytics==8.4.171",
+    "pydantic>=2",
 ]
 
 [dependency-groups]

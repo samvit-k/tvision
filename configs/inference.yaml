@@ -1,0 +1,11 @@
+name: a2_geometry_seed0
+weights: runs/step5a/a2_geometry/seed0/weights/best.pt  # selected in Step 5A (artifacts/step5a/selection.json)
+sha256: c41adbbcc990a3f711d7096924396f1ee87ec10fb1dfcdd4bb9714544002c44f
+threshold: 0.24       # val-chosen in Step 6 (artifacts/evaluate/operating_points.json, final)
+imgsz: 640            # as trained: each image's long side is resized to imgsz
+max_det: 1000         # as trained
+iou: 0.7              # Ultralytics NMS default, as in val
+device: mps           # explicit; never falls back to another device
+min_long_side: 192    # trained crops have long sides of 256-758 px at 0.2 um/px
+max_long_side: 1024
+min_threshold: 0.01   # lowest confidence a caller may request

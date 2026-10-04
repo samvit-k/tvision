@@ -129,6 +129,50 @@ class Evaluate:
     def load(cls) -> "Evaluate":
         return cls(**load_yaml("evaluate.yaml"))
 
+def _is_sha256(v) -> bool:
+    return isinstance(v, str) and len(v) == 64 and all(c in "0123456789abcdef" for c in v)
+
+@dataclass(frozen=True)
+class Inference:
+    name: str
+    weights: Path
+    sha256: str
+    threshold: float
+    imgsz: int
+    max_det: int
+    iou: float
+    device: str
+    min_long_side: int
+    max_long_side: int
+    min_threshold: float
+
+    def __post_init__(self):
+        if not _is_sha256(self.sha256):
+            raise ValueError(f"sha256 must be a lowercase SHA-256 hex digest, got {self.sha256!r}")
+        if self.device not in DEVICES:
+            raise ValueError(f"device must be one of {DEVICES}, got {self.device!r}")
+        if not (_int_at_least(self.imgsz, 32) and self.imgsz % 32 == 0):
+            raise ValueError(f"imgsz must be a positive multiple of 32, got {self.imgsz}")
+        if not _int_at_least(self.max_det, 1):
+            raise ValueError(f"max_det must be an integer >= 1, got {self.max_det}")
+        if not 0 < self.iou < 1:
+            raise ValueError(f"iou must be in (0, 1), got {self.iou}")
+        if not 0 < self.min_threshold <= self.threshold < 1:
+            raise ValueError(f"need 0 < min_threshold <= threshold < 1, got {self.min_threshold}, {self.threshold}")
+        if not (_int_at_least(self.min_long_side, 1) and _int_at_least(self.max_long_side, self.min_long_side)):
+            raise ValueError(f"need 1 <= min_long_side <= max_long_side, got {self.min_long_side}, "
+                             f"{self.max_long_side}")
+
+    @classmethod
+    def from_dict(cls, cfg: dict) -> "Inference":
+        if set(cfg) != set(cls.__dataclass_fields__):
+            raise ValueError(f"inference.yaml must set exactly {list(cls.__dataclass_fields__)}, got {sorted(cfg)}")
+        return cls(**(cfg | {"weights": _resolve(cfg["weights"])}))
+
+    @classmethod
+    def load(cls) -> "Inference":
+        return cls.from_dict(load_yaml("inference.yaml"))
+
 AUGMENTATION_KEYS = ("fliplr", "flipud", "hsv_h", "hsv_s", "hsv_v", "degrees", "translate", "scale", "shear",
                      "perspective", "mosaic", "close_mosaic", "mixup", "cutmix", "copy_paste", "bgr")
 UNIT_INTERVAL_KEYS = ("fliplr", "flipud", "hsv_h", "hsv_s", "hsv_v", "translate", "mosaic", "mixup", "cutmix",

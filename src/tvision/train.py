@@ -5,14 +5,7 @@ processed dataset still matches its verified fingerprint, and Ultralytics' own l
 verified labels. The test split is loaded only for that integrity check; no model runs on it here.
 """
 
-import os
-
-from tvision.config import PROJECT_ROOT
-
-if "YOLO_CONFIG_DIR" not in os.environ:
-    (PROJECT_ROOT / ".ultralytics").mkdir(exist_ok=True)  # Ultralytics falls back to /tmp if the parent is missing
-    os.environ["YOLO_CONFIG_DIR"] = str(PROJECT_ROOT / ".ultralytics")
-os.environ.setdefault("YOLO_AUTOINSTALL", "false")
+from tvision.ultralytics_env import check_device  # configures Ultralytics before it is imported
 
 import hashlib
 import importlib.util
@@ -30,16 +23,13 @@ import numpy as np
 import pandas as pd
 import torch
 import ultralytics
-from ultralytics import YOLO, settings
+from ultralytics import YOLO
 from ultralytics.data.dataset import YOLODataset
 from ultralytics.data.utils import check_det_dataset
 
-from tvision.config import Classes, Paths, Train
+from tvision.config import PROJECT_ROOT, Classes, Paths, Train
 from tvision.explore import _block
 from tvision.verify import SPLITS, dataset_fingerprint
-
-settings.update({"sync": False, "clearml": False, "comet": False, "dvc": False, "mlflow": False,
-                 "raytune": False, "tensorboard": False, "wandb": False})
 
 METRIC_COLUMNS = ["Box-P", "Box-R", "Box-F1", "mAP50", "mAP75", "mAP50-95"]
 
@@ -98,11 +88,6 @@ def loader_check(processed: Path, classes: Classes, splits=SPLITS) -> dict:
             "passed": len(loaded) == n_images == len(expected) and not mismatched,
         }
     return result
-
-def check_device(device: str) -> None:
-    available = {"mps": torch.backends.mps.is_available(), "cuda": torch.cuda.is_available(), "cpu": True}
-    if not available[device]:
-        raise RuntimeError(f"device {device!r} is not available; refusing to fall back to another device")
 
 def git_state() -> dict:
     def git(*args: str) -> str:
