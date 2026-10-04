@@ -32,6 +32,8 @@ def main() -> int:
     mode.add_argument("--check", action="store_true", help="Run only the gates and Ultralytics loader check")
     sub.add_parser("compare", help="Compare Step 5A runs on val")
     sub.add_parser("select", help="Apply the validation-only selection rule and freeze the choice")
+    p = sub.add_parser("evaluate", help="Evaluate the frozen baseline and selected model on the test split (once)")
+    p.add_argument("--check", action="store_true", help="Run only the gates and the val phase; never touches test")
     args = parser.parse_args()
 
     if args.command == "explore":
@@ -71,6 +73,9 @@ def main() -> int:
     if args.command == "select":
         from tvision.selection import select_final
         return 0 if select_final() else 1
+    if args.command == "evaluate":
+        from tvision.evaluate import evaluate
+        return 0 if evaluate(args.check) else 1
     return 2
 
 if __name__ == "__main__":

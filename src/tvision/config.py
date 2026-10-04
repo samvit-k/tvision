@@ -95,6 +95,40 @@ class TwoClass:
         cfg = load_yaml("two_class.yaml")
         return cls(_resolve(cfg["processed_dir"]), cfg["exclude"], cfg["splits"])
 
+GALLERY_KEYS = ("per_kind", "images", "seed", "context_px", "scale")
+BOOTSTRAP_KEYS = ("resamples", "seed", "level")
+
+def _int_at_least(v, low: int) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and v >= low
+
+@dataclass(frozen=True)
+class Evaluate:
+    selection_sha256: str
+    match_iou: float
+    gallery: dict[str, int]
+    bootstrap: dict
+
+    def __post_init__(self):
+        sha = self.selection_sha256
+        if not (isinstance(sha, str) and len(sha) == 64 and all(c in "0123456789abcdef" for c in sha)):
+            raise ValueError(f"selection_sha256 must be a lowercase SHA-256 hex digest, got {sha!r}")
+        if not 0 < self.match_iou < 1:
+            raise ValueError(f"match_iou must be in (0, 1), got {self.match_iou}")
+        if set(self.gallery) != set(GALLERY_KEYS):
+            raise ValueError(f"gallery must set exactly {list(GALLERY_KEYS)}, got {sorted(self.gallery)}")
+        low = {"per_kind": 1, "images": 1, "seed": 0, "context_px": 0, "scale": 1}
+        if bad := [k for k in GALLERY_KEYS if not _int_at_least(self.gallery[k], low[k])]:
+            raise ValueError(f"gallery values must be integers of at least {low}; bad: {bad}")
+        if set(self.bootstrap) != set(BOOTSTRAP_KEYS):
+            raise ValueError(f"bootstrap must set exactly {list(BOOTSTRAP_KEYS)}, got {sorted(self.bootstrap)}")
+        b = self.bootstrap
+        if not (_int_at_least(b["resamples"], 1) and _int_at_least(b["seed"], 0) and 0 < b["level"] < 1):
+            raise ValueError(f"bootstrap needs resamples >= 1, seed >= 0 and level in (0, 1), got {b}")
+
+    @classmethod
+    def load(cls) -> "Evaluate":
+        return cls(**load_yaml("evaluate.yaml"))
+
 AUGMENTATION_KEYS = ("fliplr", "flipud", "hsv_h", "hsv_s", "hsv_v", "degrees", "translate", "scale", "shear",
                      "perspective", "mosaic", "close_mosaic", "mixup", "cutmix", "copy_paste", "bgr")
 UNIT_INTERVAL_KEYS = ("fliplr", "flipud", "hsv_h", "hsv_s", "hsv_v", "translate", "mosaic", "mixup", "cutmix",

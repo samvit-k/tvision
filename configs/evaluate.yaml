@@ -1,0 +1,4 @@
+selection_sha256: 313a2722d0f37f9f94776795b4d2b34fcb89b3cb3585d8a224289d213e4b06f5
+match_iou: 0.5
+gallery: {per_kind: 12, images: 3, seed: 0, context_px: 24, scale: 3}
+bootstrap: {resamples: 2000, seed: 0, level: 0.95}
