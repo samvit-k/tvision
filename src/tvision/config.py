@@ -173,6 +173,43 @@ class Inference:
     def load(cls) -> "Inference":
         return cls.from_dict(load_yaml("inference.yaml"))
 
+API_CONTENT_TYPES = ("image/png", "image/jpeg")
+
+@dataclass(frozen=True)
+class Api:
+    host: str
+    port: int
+    cors_origins: list[str]
+    content_types: list[str]
+    max_upload_bytes: int
+    multipart_overhead_bytes: int
+
+    def __post_init__(self):
+        if not (isinstance(self.host, str) and self.host):
+            raise ValueError(f"host must be a non-empty string, got {self.host!r}")
+        if not (_int_at_least(self.port, 1) and self.port <= 65535):
+            raise ValueError(f"port must be an integer in 1-65535, got {self.port}")
+        if not (isinstance(self.cors_origins, list) and all(isinstance(o, str) and o for o in self.cors_origins)):
+            raise ValueError(f"cors_origins must be a list of origins, got {self.cors_origins!r}")
+        if not (isinstance(self.content_types, list) and self.content_types
+                and len(set(self.content_types)) == len(self.content_types)
+                and set(self.content_types) <= set(API_CONTENT_TYPES)):
+            raise ValueError(f"content_types must be distinct values from {API_CONTENT_TYPES}, "
+                             f"got {self.content_types!r}")
+        if not (_int_at_least(self.max_upload_bytes, 1) and _int_at_least(self.multipart_overhead_bytes, 1024)):
+            raise ValueError(f"need max_upload_bytes >= 1 and multipart_overhead_bytes >= 1024, got "
+                             f"{self.max_upload_bytes}, {self.multipart_overhead_bytes}")
+
+    @classmethod
+    def from_dict(cls, cfg: dict) -> "Api":
+        if set(cfg) != set(cls.__dataclass_fields__):
+            raise ValueError(f"api.yaml must set exactly {list(cls.__dataclass_fields__)}, got {sorted(cfg)}")
+        return cls(**cfg)
+
+    @classmethod
+    def load(cls) -> "Api":
+        return cls.from_dict(load_yaml("api.yaml"))
+
 AUGMENTATION_KEYS = ("fliplr", "flipud", "hsv_h", "hsv_s", "hsv_v", "degrees", "translate", "scale", "shear",
                      "perspective", "mosaic", "close_mosaic", "mixup", "cutmix", "copy_paste", "bgr")
 UNIT_INTERVAL_KEYS = ("fliplr", "flipud", "hsv_h", "hsv_s", "hsv_v", "translate", "mosaic", "mixup", "cutmix",

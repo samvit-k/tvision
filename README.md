@@ -52,3 +52,25 @@ The classes are `tumor`, `non_tumor` and `ambiguous`; the headline classes are `
 - **Input size:** each image is analyzed in one pass at imgsz 640. Images whose long side is outside 192–1024 px are refused rather than tiled, and the pixel scale cannot be checked from the file.
 - **Held-out performance:** on the held-out test hospitals, headline mAP50-95 was 0.232. Performance varied strongly by hospital (0.12 for OL against 0.29–0.37 elsewhere), and non_tumor nuclei are often called tumor. Expect weaker results on unseen sites and stains.
 - **Deployed operating point (validation):** headline P / R / F1 = 0.6054 / 0.5735 / 0.5890. This path differs slightly from the Step 6 validation pipeline (largest gap: tumor recall −0.0165); see `docs/PROJECT_STATUS.md`, Step 7.
+
+## Serving the API
+
+```bash
+uv run python -m tvision serve                 # http://127.0.0.1:8000; --host, --port, --device override
+```
+
+The server loads the same Predictor once at startup and refuses to start if the checkpoint, its classes or the device don't match `configs/inference.yaml`. Server settings (bind address, CORS origin, accepted types, upload limit) are in `configs/api.yaml`.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /health` | `{"status": "ok"}` |
+| `GET /model` | `ServiceInfo`: the model info and the input limits (long side 192–1024 px, `conf` ≥ 0.01, 8 MiB, PNG/JPEG) |
+| `POST /detect` | `DetectionResult`, the same JSON as `predict`, for a multipart `file` and an optional form field `conf` |
+
+```bash
+curl -F "file=@fov.png;type=image/png" -F conf=0.3 http://127.0.0.1:8000/detect
+```
+
+- **Errors:** 411 (no Content-Length), 413 (too large), 415 (not PNG/JPEG, or content that doesn't match the declared type), 422 (unreadable image, long side out of range, `conf` out of range), 500 (inference failed). Each returns a JSON `detail`.
+- **Confidence filtering:** a response is capped at `max_det` = 1000 detections. Filtering a low-threshold response client-side matches a request at the higher threshold only if the response was not capped. At `conf` 0.01, one of the 222 validation images reaches the cap, so treat a response with exactly 1000 detections as possibly truncated.
+- **Scope:** the API is for local research use. It has no authentication and binds to localhost by default.

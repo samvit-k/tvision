@@ -11,10 +11,13 @@ dependencies = [
     "opencv-python",
     "ultralytics==8.4.171",
     "pydantic>=2",
+    "fastapi>=0.142.2",
+    "uvicorn>=0.54.0",
+    "python-multipart>=0.0.32",
 ]
 
 [dependency-groups]
-dev = ["pytest"]
+dev = ["httpx>=0.28.1", "pytest"]
 
 [build-system]
 requires = ["hatchling"]

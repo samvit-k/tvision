@@ -44,6 +44,10 @@ def main() -> int:
     p.add_argument("--out", type=Path, help="Write <stem>.json (and <stem>.png) here instead of JSON to stdout")
     p.add_argument("--annotate", action="store_true", help="Also write an OpenCV-annotated PNG (needs --out)")
     p.add_argument("--check", action="store_true", help="Val-only parity check against Step 6; never touches test")
+    p = sub.add_parser("serve", help="Serve the detector over HTTP (configs/api.yaml, configs/inference.yaml)")
+    p.add_argument("--host", help="Bind address (default: configs/api.yaml)")
+    p.add_argument("--port", type=int, help="Port (default: configs/api.yaml)")
+    p.add_argument("--device", choices=DEVICES)
     args = parser.parse_args()
     if args.command == "predict":
         if args.check and (args.images or args.conf is not None or args.device or args.out or args.annotate):
@@ -99,6 +103,9 @@ def main() -> int:
             return 0 if inference_check() else 1
         from tvision.inference import predict_images
         return predict_images(args.images, args.conf, args.device, args.out, args.annotate)
+    if args.command == "serve":
+        from tvision.api import serve
+        return serve(args.host, args.port, args.device)
     return 2
 
 if __name__ == "__main__":

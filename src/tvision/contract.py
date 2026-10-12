@@ -50,6 +50,24 @@ class ModelInfo(_Frozen):
             raise ValueError("classes must be unique and headline_classes a subset of them")
         return self
 
+class InputLimits(_Frozen):
+    min_long_side: int = Field(gt=0)
+    max_long_side: int = Field(gt=0)
+    min_threshold: float = Field(gt=0, lt=1)
+    max_upload_bytes: int = Field(gt=0)
+    content_types: list[str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> "InputLimits":
+        if self.min_long_side > self.max_long_side:
+            raise ValueError(f"min_long_side {self.min_long_side} exceeds max_long_side {self.max_long_side}")
+        return self
+
+class ServiceInfo(_Frozen):
+    """What `GET /model` returns: the served model and the limits `POST /detect` enforces."""
+    model: ModelInfo
+    limits: InputLimits
+
 class DetectionResult(_Frozen):
     image: ImageInfo
     model: ModelInfo

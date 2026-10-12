@@ -1,5 +1,7 @@
 """Synthetic NuCLS-like raw dataset shared by the conversion and verification tests."""
 
+import tvision.ultralytics_env  # noqa: F401  # configure Ultralytics (no autoinstall) before any test imports it
+
 from pathlib import Path
 
 import cv2

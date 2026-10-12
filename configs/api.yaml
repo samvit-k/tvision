@@ -1,0 +1,6 @@
+host: 127.0.0.1
+port: 8000
+cors_origins: [http://localhost:3000]
+content_types: [image/png, image/jpeg]
+max_upload_bytes: 8388608
+multipart_overhead_bytes: 65536
