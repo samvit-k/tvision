@@ -1,10 +1,16 @@
 # Raw source data (immutable, referenced via configs/paths.yaml)
 QC/
+
 # Generated data and outputs
 data/
 artifacts/
 runs/
 *.pt
+
+# Internal project notes
+docs/PROJECT_STATUS.md
+docs/notes.md
+
 # Environments / caches / tooling
 .venv/
 __pycache__/
@@ -12,6 +18,7 @@ __pycache__/
 node_modules/
 .nuxt/
 .output/
+web/dist
 .claude/
 .ultralytics/
 .DS_Store

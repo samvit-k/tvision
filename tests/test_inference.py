@@ -239,6 +239,24 @@ def test_real_predict_is_valid_deterministic_and_thresholds_nest():
     assert [(d.class_id, d.confidence, d.box) for d in kept] == [(d.class_id, d.confidence, d.box)
                                                                  for d in r.detections]
 
+TRUNCATED_VAL = VAL_DIR / "TCGA-AO-A0J4-DX1_id-5ea40a66ddda5f839898ed9f_left-17436_top-10877_bottom-11148_right-17718.png"
+
+@needs_checkpoint
+@pytest.mark.skipif(not TRUNCATED_VAL.is_file(), reason="no processed val images")
+def test_real_truncated_response_filters_like_a_fresh_request():
+    """The UI's slider rule: filtering a response cut at max_det equals a fresh request at any t above the request
+    threshold. Below its lowest confidence the fresh request is cut at the same boxes, so it adds nothing."""
+    predictor = inf.Predictor(REAL, CLASSES, device="cpu")
+    img = predictor.load(TRUNCATED_VAL)
+    low = predictor.predict(img, conf=REAL.min_threshold)
+    assert len(low.detections) == REAL.max_det, "premise: this val image reaches max_det at the API floor"
+    floor = min(d.confidence for d in low.detections)
+    assert floor > REAL.min_threshold
+    for t in ((REAL.min_threshold + floor) / 2, floor, 0.02, REAL.threshold):
+        kept = [(d.class_id, d.confidence, d.box) for d in low.detections if d.confidence > t]
+        fresh = predictor.predict(img, conf=t)
+        assert kept == [(d.class_id, d.confidence, d.box) for d in fresh.detections] and kept
+
 def test_annotate_draws_class_colours_without_modifying_input():
     img = np.zeros((200, 300, 3), np.uint8)
     out = inf.annotate(img, _result([_det(0, 0.9, (10, 10, 40, 40))]), labels=False)

@@ -19,7 +19,7 @@ from ultralytics.engine.results import Results
 
 from tvision import api
 from tvision import inference as inf
-from tvision.config import Api, Classes, Inference, load_yaml
+from tvision.config import PROJECT_ROOT, Api, Classes, Inference, load_yaml
 from tvision.contract import DetectionResult, InputLimits, ServiceInfo
 
 from test_inference import CLASSES, REAL, VAL_IMAGES, FakeYOLO, _cfg, _encode, _rgb, needs_checkpoint
@@ -276,6 +276,12 @@ def test_requests_do_overlap_without_the_lock(client, monkeypatch):
 def test_tests_run_with_ultralytics_autoinstall_off():
     from ultralytics.utils import AUTOINSTALL
     assert AUTOINSTALL is False
+
+def test_web_openapi_snapshot_matches_the_live_schema():
+    """The web UI's types are generated from web/openapi.json, so it must equal the served contract."""
+    snapshot = PROJECT_ROOT / "web" / "openapi.json"
+    live = json.loads(json.dumps(api.create_app(api_cfg=API).openapi()))
+    assert json.loads(snapshot.read_text()) == live, "regenerate with `npm run gen:openapi` in web/"
 
 def test_api_imports_no_training_or_evaluation_code():
     out = subprocess.run([sys.executable, "-c", "import sys, tvision.api; "

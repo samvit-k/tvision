@@ -74,3 +74,27 @@ curl -F "file=@fov.png;type=image/png" -F conf=0.3 http://127.0.0.1:8000/detect
 - **Errors:** 411 (no Content-Length), 413 (too large), 415 (not PNG/JPEG, or content that doesn't match the declared type), 422 (unreadable image, long side out of range, `conf` out of range), 500 (inference failed). Each returns a JSON `detail`.
 - **Confidence filtering:** a response is capped at `max_det` = 1000 detections. Filtering a low-threshold response client-side matches a request at the higher threshold only if the response was not capped. At `conf` 0.01, one of the 222 validation images reaches the cap, so treat a response with exactly 1000 detections as possibly truncated.
 - **Scope:** the API is for local research use. It has no authentication and binds to localhost by default.
+
+## Web UI
+
+A single Nuxt page for uploading an H&E image (PNG or JPEG) and inspecting the detections. It is a client of the API above: it has no model code and only calls `/health`, `/model` and `/detect`.
+
+**Prerequisites:** Node 24 LTS (`web/.nvmrc`) and the API running (`uv run python -m tvision serve`).
+
+```bash
+cd web
+npm ci                 # install the pinned dependencies
+npm run dev            # http://localhost:3000
+```
+
+- Open **http://localhost:3000**. The API's CORS setting (`configs/api.yaml`) allows only that origin, so `127.0.0.1:3000` is refused.
+- The API address defaults to `http://127.0.0.1:8000`. To use another one, set `NUXT_PUBLIC_API_BASE` (for example `NUXT_PUBLIC_API_BASE=http://127.0.0.1:8001 npm run dev`) and add the page's origin to `cors_origins`.
+- **Using the page:** choose an image and press **Detect nuclei**. The page sends one request at the lowest allowed confidence (0.01), and the slider filters that response in the browser, starting at the validation-chosen 0.24. If a response reached the 1,000-detection cap, the page says which weaker detections were cut off.
+- **Research use only:** the image is sent to the local API for analysis and is not stored.
+
+| Command (in `web/`) | Purpose |
+|---|---|
+| `npm run typecheck` | Type check (`nuxt typecheck`). Plain `vue-tsc --noEmit` checks no files here |
+| `npm test` | Vitest unit tests |
+| `npm run generate` | Static build in `.output/public` |
+| `npm run gen:openapi` then `npm run gen:types` | Refresh `openapi.json` and `app/types/api.ts` after an API change; `tests/test_api.py` fails while the snapshot is stale |
