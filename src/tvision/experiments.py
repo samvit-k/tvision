@@ -1,4 +1,4 @@
-"""Step 5A: controlled validation experiments against the frozen baseline (PROJECT.md Step 9A).
+"""Step 5A: controlled validation experiments against the frozen baseline.
 
 Every experiment is the `control` config in configs/experiments.yaml plus overrides, and is refused if it changes
 anything beyond its declared factors relative to its `compare_to` config. The optimizer is pinned to the values the
@@ -559,7 +559,7 @@ def baseline_manifest() -> bool:
     sha = make_manifest(ctx, committed_bytes(ctx.train_yaml))
     files = json.loads(ctx.manifest.read_text())["n_files"]
     print(f"Manifest: {ctx.manifest} ({files} files)\nSHA-256: {sha}\n"
-          "Record it as baseline_manifest_sha256 in configs/experiments.yaml and in docs/PROJECT_STATUS.md, then commit.")
+          "Record it as baseline_manifest_sha256 in configs/experiments.yaml, then commit.")
     return True
 
 def experiment(name: str, seed: int, smoke: bool = False, check_only: bool = False) -> bool:

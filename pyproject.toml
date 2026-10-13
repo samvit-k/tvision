@@ -3,6 +3,9 @@ name = "tvision"
 version = "0.1.0"
 description = "Research-oriented tumor-nucleus detection in H&E breast histopathology (NuCLS + YOLO)."
 readme = "README.md"
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
+authors = [{ name = "Samvit Kundapur" }]
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "numpy",

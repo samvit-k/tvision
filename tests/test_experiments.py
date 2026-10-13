@@ -231,6 +231,7 @@ def test_make_manifest_refuses_overwrite_and_inconsistent_baseline(tmp_path):
         ex.make_manifest(other, other.train_yaml.read_bytes())
 
 @pytest.mark.skipif(load_yaml("experiments.yaml")["baseline_manifest_sha256"] is None, reason="anchor not committed yet")
+@pytest.mark.skipif(not (PROJECT_ROOT / "docs" / "PROJECT_STATUS.md").is_file(), reason="internal status log not present")
 def test_committed_anchor_is_recorded_in_project_status():
     anchor = load_yaml("experiments.yaml")["baseline_manifest_sha256"]
     assert anchor in (PROJECT_ROOT / "docs" / "PROJECT_STATUS.md").read_text()

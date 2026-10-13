@@ -1,4 +1,4 @@
-"""Step 8: the FastAPI backend serving the Step 7 Predictor (PROJECT.md 14).
+"""Step 8: the FastAPI backend serving the Step 7 Predictor.
 
 HTTP concerns only: request validation and error mapping. Model loading, inference and the detection contract live in
 `tvision.inference` and `tvision.contract`; nothing here imports training, experiment or evaluation code. Responses

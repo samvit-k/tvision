@@ -19,7 +19,7 @@ export function useTvisionApi() {
     }
     catch (e) {
       if ((e as Error).name === "AbortError") throw e
-      throw new ApiError(`Cannot reach the TVision API at ${apiBase}. Start it with \`python -m tvision serve\`.`)
+      throw new ApiError(`Cannot reach the TVision API at ${apiBase}. Start it with: python -m tvision serve`)
     }
     const body = await response.json().catch(() => null)
     if (!response.ok) throw new ApiError(detailMessage(body, response.status))

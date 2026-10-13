@@ -1,4 +1,4 @@
-"""The detection contract shared by inference, visualization, the API and the frontend (PROJECT.md 12).
+"""The detection contract shared by inference, visualization, the API and the frontend.
 
 Boxes are in original-image pixels (x right, y down), clipped to the image. Every detection has confidence above the
 result's threshold. `counts` is derived from `detections` for the UI's class counts and is validated against them.

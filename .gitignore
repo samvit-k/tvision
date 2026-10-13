@@ -8,6 +8,7 @@ runs/
 *.pt
 
 # Internal project notes
+docs/PROJECT.md
 docs/PROJECT_STATUS.md
 docs/notes.md
 
